@@ -42,6 +42,16 @@ body {
     cursor: crosshair;
 }
 
+#waveformCanvas {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 150px;
+    pointer-events: none;
+    z-index: 10;
+}
+
 /* Controls Panel */
 #controls {
     position: fixed;
@@ -59,7 +69,7 @@ body {
     border: 1px solid var(--border);
     box-shadow: var(--shadow);
     z-index: 100;
-    transition: opacity 0.3s ease, transform 0.3s ease;
+    transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
 }
 
 #controls.hidden {
@@ -88,7 +98,7 @@ body {
     font-size: 14px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.2s ease-in-out;
 }
 
 .control-btn:hover {
@@ -138,7 +148,7 @@ body {
     box-shadow: var(--shadow);
     z-index: 200;
     opacity: 0;
-    transition: transform 0.3s ease, opacity 0.3s ease;
+    transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
 }
 
 .settings-panel.open {
@@ -167,7 +177,7 @@ body {
     color: var(--text-secondary);
     line-height: 1;
     padding: 0;
-    transition: color 0.2s;
+    transition: color 0.2s ease-in-out;
 }
 
 .close-btn:hover {
@@ -215,7 +225,7 @@ body {
     border-radius: 50%;
     background: var(--accent);
     cursor: pointer;
-    transition: transform 0.2s;
+    transition: transform 0.2s ease-in-out;
 }
 
 .setting-group input[type="range"]::-webkit-slider-thumb:hover {
@@ -279,7 +289,7 @@ body {
     font-weight: 500;
     color: var(--text-secondary);
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.2s ease-in-out;
 }
 
 .reset-btn:hover {
@@ -304,7 +314,7 @@ body {
     font-size: 11px;
     color: var(--text-secondary);
     opacity: 0;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.3s ease-in-out;
     z-index: 50;
     pointer-events: none;
 }
@@ -333,7 +343,7 @@ body {
     font-weight: 500;
     color: var(--text-secondary);
     opacity: 0;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.3s ease-in-out;
     z-index: 100;
 }
 
@@ -360,7 +370,7 @@ body {
     opacity: 0;
     transform: scale(0.8);
     pointer-events: none;
-    transition: all 0.3s ease;
+    transition: all 0.3s ease-in-out;
     z-index: 100;
     box-shadow: var(--shadow);
 }

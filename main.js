@@ -148,6 +148,9 @@ const CONFIG = {
 
     // Quality mode
     highQuality: true,
+
+    // Waveform Overlay
+    waveformEnabled: false,
 };
 
 // ============================================
@@ -161,6 +164,10 @@ const state = {
     symbiote: null,
     originalPositions: null,
     envMap: null,
+
+    // Waveform
+    waveformCanvas: null,
+    waveformCtx: null,
 
     // Particles
     particles: null,
@@ -289,7 +296,18 @@ const noise = new SimplexNoise();
 // ============================================
 // Initialization
 // ============================================
+// ============================================
+// Initialization
+// ============================================
 function init() {
+    // Waveform Setup
+    state.waveformCanvas = document.getElementById('waveformCanvas');
+    if (state.waveformCanvas) {
+        state.waveformCtx = state.waveformCanvas.getContext('2d');
+        state.waveformCanvas.width = window.innerWidth;
+        state.waveformCanvas.height = 150;
+    }
+
     state.scene = new THREE.Scene();
     state.scene.background = new THREE.Color(0xffffff);
 
@@ -525,8 +543,8 @@ function updateParticles() {
         const origY = originals[idx + 1];
         const origZ = originals[idx + 2];
 
-        // Apply rotation to original position
-        const angle = state.time * CONFIG.particles.orbitSpeed;
+        // Apply rotation to original position (with eased variation)
+        const angle = state.time * CONFIG.particles.orbitSpeed + Math.sin(state.time * 0.3) * 0.2;
         const rotatedX = origX * Math.cos(angle) - origZ * Math.sin(angle);
         const rotatedZ = origX * Math.sin(angle) + origZ * Math.cos(angle);
 
@@ -783,6 +801,11 @@ function onResize() {
     state.camera.aspect = window.innerWidth / window.innerHeight;
     state.camera.updateProjectionMatrix();
     state.renderer.setSize(window.innerWidth, window.innerHeight);
+
+    if (state.waveformCanvas) {
+        state.waveformCanvas.width = window.innerWidth;
+        state.waveformCanvas.height = 150;
+    }
 }
 
 // ============================================
@@ -921,14 +944,15 @@ function setupSettingsControls() {
         });
     }
 
-    // Bloom toggle
-    const bloomToggle = document.getElementById('bloomToggle');
-    if (bloomToggle) {
-        bloomToggle.addEventListener('change', (e) => {
-            CONFIG.bloom.enabled = e.target.checked;
-            showStatus(e.target.checked ? 'Bloom enabled' : 'Bloom disabled');
+    // Waveform toggle
+    const waveformToggle = document.getElementById('waveformToggle');
+    if (waveformToggle) {
+        waveformToggle.addEventListener('change', (e) => {
+            CONFIG.waveformEnabled = e.target.checked;
         });
     }
+
+
 
     // Reset button
     const resetBtn = document.getElementById('resetSettingsBtn');
@@ -952,7 +976,7 @@ function resetSettings() {
     CONFIG.physics.damping = 0.92;
     CONFIG.particles.enabled = true;
     CONFIG.chromatics.enabled = true;
-    CONFIG.bloom.enabled = false;
+    CONFIG.waveformEnabled = false;
 
     // Update UI
     document.getElementById('sizeSlider').value = 0.9;
@@ -964,7 +988,9 @@ function resetSettings() {
     document.getElementById('particleToggle').checked = true;
     document.getElementById('chromaticToggle').checked = true;
     document.getElementById('themeSelect').value = 'void';
-    document.getElementById('bloomToggle').checked = false;
+    if (document.getElementById('waveformToggle')) {
+        document.getElementById('waveformToggle').checked = false;
+    }
 
     // Apply changes
     recreateSymbiote();
@@ -1444,6 +1470,56 @@ function analyzeAudio() {
     });
 }
 
+// ============================================
+// Waveform Visualization
+// ============================================
+function drawWaveform() {
+    if (!state.waveformCtx || !state.analyser) return;
+
+    const width = state.waveformCanvas.width;
+    const height = state.waveformCanvas.height;
+    const ctx = state.waveformCtx;
+
+    // Get time domain data
+    const dataArray = new Uint8Array(state.analyser.fftSize);
+    state.analyser.getByteTimeDomainData(dataArray);
+
+    ctx.clearRect(0, 0, width, height);
+
+    ctx.lineWidth = 2;
+
+    // Match waveform color to symbiote material color
+    let colorHex = 'ffffff';
+    if (state.symbiote && state.symbiote.material && state.symbiote.material.color) {
+        colorHex = state.symbiote.material.color.getHexString();
+    }
+
+    ctx.strokeStyle = `#${colorHex}`;
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = `#${colorHex}`;
+
+    ctx.beginPath();
+
+    const sliceWidth = width * 1.0 / state.analyser.fftSize;
+    let x = 0;
+
+    for (let i = 0; i < state.analyser.fftSize; i++) {
+        const v = dataArray[i] / 128.0; // 0..2
+        const y = (v * height) / 2; // scale to canvas height
+
+        if (i === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
+
+        x += sliceWidth;
+    }
+
+    ctx.lineTo(width, height / 2);
+    ctx.stroke();
+}
+
 function initHotspots() {
     state.hotspots = [];
     for (let i = 0; i < CONFIG.hotspots.count; i++) {
@@ -1506,8 +1582,8 @@ function animate() {
         // Update symbiote deformation
         updateSymbiote();
 
-        // Rotate symbiote
-        state.symbiote.rotation.y += CONFIG.rotationSpeed;
+        // Rotate symbiote (with ease-in-out fluctuation)
+        state.symbiote.rotation.y += CONFIG.rotationSpeed * (1 + 0.3 * Math.sin(state.time * 0.5));
         state.symbiote.rotation.x = Math.sin(state.time * 0.2) * 0.1;
 
         // Decay poke force
@@ -1516,6 +1592,13 @@ function animate() {
 
     // Render
     state.renderer.render(state.scene, state.camera);
+
+    // Draw waveform overlay
+    if (CONFIG.waveformEnabled) {
+        drawWaveform();
+    } else if (state.waveformCtx) {
+        state.waveformCtx.clearRect(0, 0, state.waveformCanvas.width, state.waveformCanvas.height);
+    }
 }
 
 function updateSymbiote() {
@@ -1528,7 +1611,8 @@ function updateSymbiote() {
     const physics = state.physics;
 
     // Global audio influence for overall size breathing
-    const globalBreathing = 1 + state.bass * 0.3 + state.beat.intensity * 0.2;
+    // Global audio influence (Removed size breathing, fixed base scale)
+    const globalBreathing = 1.0;
 
     // Wobble effect from physics
     const wobble = physics.wobbleIntensity * Math.sin(physics.wobblePhase);
@@ -1627,7 +1711,8 @@ function updateSymbiote() {
         }
 
         // Beat pulse
-        const beatPulse = state.beat.intensity * 0.15;
+        // Beat pulse (Applied to noise, not global size)
+        const beatPulse = state.beat.intensity * 0.2 * bassNoise;
 
         // Wobble displacement (jelly effect)
         const wobbleDisplacement = wobble * 0.1 * (1 + Math.sin(nx * 3 + ny * 2 + nz));
