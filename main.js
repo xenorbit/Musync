@@ -354,8 +354,29 @@ function init() {
     state.lastTime = performance.now();
     animate();
 
-    // Auto-start system audio
-    startSystemAudio();
+    // Splash Screen Interaction
+    const splash = document.getElementById('splashScreen');
+    const startBtn = document.getElementById('startBtn');
+
+    if (startBtn && splash) {
+        startBtn.addEventListener('click', async () => {
+            startBtn.textContent = "Requesting Access...";
+            startBtn.style.opacity = "0.7";
+            startBtn.style.pointerEvents = "none";
+
+            // Attempt to capture system audio
+            await startSystemAudio();
+
+            // Allow entry regardless of success/failure (user can retry in UI)
+            splash.classList.add('hidden');
+            setTimeout(() => {
+                if (splash.parentNode) splash.parentNode.removeChild(splash);
+            }, 600);
+        });
+    } else {
+        // Fallback if no splash (e.g. dev mode)
+        // startSystemAudio(); // Don't auto-start to avoid errors
+    }
 }
 
 // ============================================
@@ -530,6 +551,10 @@ function updateParticles() {
     const mouseVelX = state.drag.velocityX * 0.5;
     const mouseVelY = state.drag.velocityY * 0.5;
 
+    // Current Blob Position
+    const blobX = state.physics.positionX;
+    const blobY = state.physics.positionY;
+
     for (let i = 0; i < count; i++) {
         const idx = i * 3;
 
@@ -548,13 +573,21 @@ function updateParticles() {
         const rotatedX = origX * Math.cos(angle) - origZ * Math.sin(angle);
         const rotatedZ = origX * Math.sin(angle) + origZ * Math.cos(angle);
 
-        // Direction from center
-        const dist = Math.sqrt(x * x + y * y + z * z);
-        const nx = x / (dist + 0.001);
-        const ny = y / (dist + 0.001);
-        const nz = z / (dist + 0.001);
+        // Ideal Target Position (Relative to Blob)
+        const targetX = rotatedX + blobX;
+        const targetY = origY + blobY;
+        const targetZ = rotatedZ;
 
-        // Repulsion force pushes outward
+        // Direction from blob center
+        const dx = x - blobX;
+        const dy = y - blobY;
+        const dz = z;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const nx = dx / (dist + 0.001);
+        const ny = dy / (dist + 0.001);
+        const nz = dz / (dist + 0.001);
+
+        // Repulsion force pushes outward from blob center
         velocities[idx] += nx * repulsion * 0.1;
         velocities[idx + 1] += ny * repulsion * 0.1;
         velocities[idx + 2] += nz * repulsion * 0.1;
@@ -563,10 +596,10 @@ function updateParticles() {
         velocities[idx] += mouseVelX * 0.02;
         velocities[idx + 1] += mouseVelY * 0.02;
 
-        // Return force toward orbit position
-        velocities[idx] += (rotatedX - x) * CONFIG.particles.returnSpeed;
-        velocities[idx + 1] += (origY - y) * CONFIG.particles.returnSpeed;
-        velocities[idx + 2] += (rotatedZ - z) * CONFIG.particles.returnSpeed;
+        // Return force toward orbit position (updated target)
+        velocities[idx] += (targetX - x) * CONFIG.particles.returnSpeed;
+        velocities[idx + 1] += (targetY - y) * CONFIG.particles.returnSpeed;
+        velocities[idx + 2] += (targetZ - z) * CONFIG.particles.returnSpeed;
 
         // Apply velocity with damping
         x += velocities[idx];
@@ -655,9 +688,15 @@ function updateJellyPhysics() {
     const config = CONFIG.physics;
 
     if (state.mouse.isDown) {
+        // Calculate visible play area at Z=0
+        // visibleHeight = 2 * tan(fov/2) * distance
+        const visibleHeightAtZ0 = 2 * Math.tan((state.camera.fov * Math.PI) / 360) * state.camera.position.z;
+        const visibleWidthAtZ0 = visibleHeightAtZ0 * state.camera.aspect;
+
         // When dragging, follow mouse with spring
-        const targetX = state.mouse.x * 2;
-        const targetY = state.mouse.y * 2;
+        // Map normalized mouse (-1 to 1) to world coordinates
+        const targetX = state.mouse.x * (visibleWidthAtZ0 / 2);
+        const targetY = state.mouse.y * (visibleHeightAtZ0 / 2);
 
         const forceX = (targetX - physics.positionX) * config.springStrength * 2;
         const forceY = (targetY - physics.positionY) * config.springStrength * 2;
@@ -665,12 +704,9 @@ function updateJellyPhysics() {
         physics.velocityX += forceX;
         physics.velocityY += forceY;
     } else {
-        // Spring back to center
-        const forceX = -physics.positionX * config.springStrength;
-        const forceY = -physics.positionY * config.springStrength;
-
-        physics.velocityX += forceX;
-        physics.velocityY += forceY;
+        // "Drag and Place" - No return to center
+        // Just apply a tiny friction or let damping handle smooth stop
+        // This allows the blob to stay where user placed it
     }
 
     // Apply damping
@@ -682,14 +718,23 @@ function updateJellyPhysics() {
     physics.positionY += physics.velocityY;
 
     // Bounce off screen edges
-    const maxDist = config.maxDisplacement;
-    if (Math.abs(physics.positionX) > maxDist) {
-        physics.positionX = Math.sign(physics.positionX) * maxDist;
+    // Bounce off screen edges
+    // Recalculate boundaries to match current view
+    const viewHeight = 2 * Math.tan((state.camera.fov * Math.PI) / 360) * state.camera.position.z;
+    const viewWidth = viewHeight * state.camera.aspect;
+
+    // Allow placing anywhere visible, minus a margin for the radius
+    const margin = CONFIG.baseRadius * 0.8;
+    const maxDistX = (viewWidth / 2) - margin;
+    const maxDistY = (viewHeight / 2) - margin;
+
+    if (Math.abs(physics.positionX) > maxDistX) {
+        physics.positionX = Math.sign(physics.positionX) * maxDistX;
         physics.velocityX *= -config.bounceElasticity;
         physics.wobbleIntensity += Math.abs(physics.velocityX) * 0.5;
     }
-    if (Math.abs(physics.positionY) > maxDist) {
-        physics.positionY = Math.sign(physics.positionY) * maxDist;
+    if (Math.abs(physics.positionY) > maxDistY) {
+        physics.positionY = Math.sign(physics.positionY) * maxDistY;
         physics.velocityY *= -config.bounceElasticity;
         physics.wobbleIntensity += Math.abs(physics.velocityY) * 0.5;
     }
