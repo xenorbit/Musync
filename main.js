@@ -9,7 +9,7 @@
 // ============================================
 const CONFIG = {
     // Symbiote settings
-    baseRadius: 0.9,
+    baseRadius: 0.75,
     segments: 128,
     rotationSpeed: 0.0004,
 
@@ -20,7 +20,7 @@ const CONFIG = {
     // Jelly Physics (Spring-Mass-Damper)
     physics: {
         springStrength: 0.08,    // How strongly blob returns to center
-        damping: 0.92,           // Velocity damping (lower = more wobbly)
+        damping: 0.90,           // Velocity damping (lower = more wobbly)
         throwRetention: 0.95,    // How much velocity is kept on release
         bounceElasticity: 0.7,   // Bounce off screen edges
         maxDisplacement: 2.5,    // Max distance from center
@@ -53,7 +53,7 @@ const CONFIG = {
     // Chromatic Effects (Spectrum-only mode)
     chromatics: {
         enabled: true,
-        darkMode: false,           // Toggle between dark and light background
+        darkMode: true,           // Toggle between dark and light background
         emissiveIntensity: 0.8,
         transitionSpeed: 0.15,
     },
@@ -114,7 +114,7 @@ const CONFIG = {
     },
 
     beatDetection: {
-        sensitivity: 1.5,
+        sensitivity: 2.0,
         decayRate: 0.98,
     },
 
@@ -277,7 +277,7 @@ function init() {
     if (state.waveformCanvas) {
         state.waveformCtx = state.waveformCanvas.getContext('2d');
         state.waveformCanvas.width = window.innerWidth;
-        state.waveformCanvas.height = 150;
+        state.waveformCanvas.height = 100;
     }
 
     state.scene = new THREE.Scene();
@@ -320,6 +320,9 @@ function init() {
     initHotspots();
     setupLighting();
     setupEventListeners();
+
+    // Apply initial dark mode setting
+    toggleDarkMode(CONFIG.chromatics.darkMode);
 
     window.addEventListener('resize', onResize);
 
@@ -660,6 +663,8 @@ function updateJellyPhysics() {
     const physics = state.physics;
     const config = CONFIG.physics;
 
+    // DRAG DISABLED - blob stays centered
+    /*
     if (state.mouse.isDown) {
         // Calculate visible play area at Z=0
         // visibleHeight = 2 * tan(fov/2) * distance
@@ -681,6 +686,7 @@ function updateJellyPhysics() {
         // Just apply a tiny friction or let damping handle smooth stop
         // This allows the blob to stay where user placed it
     }
+    */
 
     // Apply damping
     physics.velocityX *= config.damping;
@@ -994,25 +1000,25 @@ function toggleSettings(open = null) {
 
 function resetSettings() {
     // Reset to defaults
-    CONFIG.baseRadius = 0.9;
-    CONFIG.beatDetection.sensitivity = 1.5;
-    CONFIG.physics.damping = 0.92;
+    CONFIG.baseRadius = 0.75;
+    CONFIG.beatDetection.sensitivity = 2.0;
+    CONFIG.physics.damping = 0.90;
     CONFIG.particles.enabled = true;
     CONFIG.chromatics.enabled = true;
-    CONFIG.chromatics.darkMode = false;
+    CONFIG.chromatics.darkMode = true;
     CONFIG.waveformEnabled = true;
 
     // Update UI
-    document.getElementById('sizeSlider').value = 0.9;
-    document.getElementById('sizeValue').textContent = '0.9';
-    document.getElementById('sensitivitySlider').value = 1.5;
-    document.getElementById('sensitivityValue').textContent = '1.5';
-    document.getElementById('dampingSlider').value = 0.92;
-    document.getElementById('dampingValue').textContent = '0.92';
+    document.getElementById('sizeSlider').value = 0.75;
+    document.getElementById('sizeValue').textContent = '0.75';
+    document.getElementById('sensitivitySlider').value = 2.0;
+    document.getElementById('sensitivityValue').textContent = '2.0';
+    document.getElementById('dampingSlider').value = 0.90;
+    document.getElementById('dampingValue').textContent = '0.90';
     document.getElementById('particleToggle').checked = true;
     document.getElementById('chromaticToggle').checked = true;
     if (document.getElementById('darkModeToggle')) {
-        document.getElementById('darkModeToggle').checked = false;
+        document.getElementById('darkModeToggle').checked = true;
     }
     if (document.getElementById('waveformToggle')) {
         document.getElementById('waveformToggle').checked = true;
@@ -1021,7 +1027,7 @@ function resetSettings() {
     // Apply changes
     recreateSymbiote();
     if (state.particles) state.particles.visible = true;
-    toggleDarkMode(false);
+    toggleDarkMode(true);
 
     showStatus('Settings reset to defaults');
 }
@@ -1522,43 +1528,25 @@ function drawWaveform() {
 
     const sliceWidth = width / state.analyser.fftSize;
 
-    // Multiple waveform layers with varying opacity and scale
-    const layers = [
-        { opacity: 0.1, scale: 1.0, lineWidth: 4 },
-        { opacity: 0.2, scale: 0.75, lineWidth: 3 },
-        { opacity: 0.4, scale: 0.5, lineWidth: 2 },
-        { opacity: 0.6, scale: 0.3, lineWidth: 1.5 },
+    // Multiple waveform lines with different sensitivities and vertical offsets
+    const lines = [
+        { sensitivity: 0.4, opacity: 0.3, lineWidth: 1.25, offset: -12 },
+        { sensitivity: 1.0, opacity: 0.9, lineWidth: 2.5, offset: 0 },
+        { sensitivity: 0.4, opacity: 0.3, lineWidth: 1.25, offset: 12 },
     ];
 
-    layers.forEach(layer => {
-        ctx.lineWidth = layer.lineWidth;
-        ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${layer.opacity})`;
-        ctx.shadowBlur = 10 * layer.opacity;
-        ctx.shadowColor = `rgba(${r}, ${g}, ${b}, ${layer.opacity * 0.5})`;
+    lines.forEach(line => {
+        ctx.lineWidth = line.lineWidth;
+        ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${line.opacity})`;
+        ctx.shadowBlur = 6 * line.opacity;
+        ctx.shadowColor = `rgba(${r}, ${g}, ${b}, ${line.opacity * 0.5})`;
 
-        // Draw upper waveform
         ctx.beginPath();
         for (let i = 0; i < state.analyser.fftSize; i++) {
             const v = (dataArray[i] - 128) / 128.0;
-            const amplitude = Math.abs(v) * (height / 2) * layer.scale;
+            const amplitude = v * (height / 2) * line.sensitivity;
             const x = i * sliceWidth;
-            const y = centerY - amplitude;
-
-            if (i === 0) {
-                ctx.moveTo(x, y);
-            } else {
-                ctx.lineTo(x, y);
-            }
-        }
-        ctx.stroke();
-
-        // Draw mirrored lower waveform
-        ctx.beginPath();
-        for (let i = 0; i < state.analyser.fftSize; i++) {
-            const v = (dataArray[i] - 128) / 128.0;
-            const amplitude = Math.abs(v) * (height / 2) * layer.scale;
-            const x = i * sliceWidth;
-            const y = centerY + amplitude;
+            const y = centerY + line.offset + amplitude;
 
             if (i === 0) {
                 ctx.moveTo(x, y);
@@ -1568,15 +1556,6 @@ function drawWaveform() {
         }
         ctx.stroke();
     });
-
-    // Subtle center line
-    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.1)`;
-    ctx.lineWidth = 1;
-    ctx.shadowBlur = 0;
-    ctx.beginPath();
-    ctx.moveTo(0, centerY);
-    ctx.lineTo(width, centerY);
-    ctx.stroke();
 }
 
 function initHotspots() {

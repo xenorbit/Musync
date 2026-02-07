@@ -122,13 +122,14 @@ body {
     z-index: 2;
 }
 
-/* Waveform canvas - behind the blob, at bottom */
+/* Waveform canvas - behind the blob, vertically centered */
 #waveformCanvas {
     position: absolute;
-    bottom: 0;
+    top: 50%;
     left: 0;
+    transform: translateY(-50%);
     width: 100%;
-    height: 150px;
+    height: 100px;
     pointer-events: none;
     z-index: 1;
 }
