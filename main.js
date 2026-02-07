@@ -50,52 +50,24 @@ const CONFIG = {
         returnSpeed: 0.02,       // How fast particles return to orbit
     },
 
-    // Chromatic Effects
+    // Chromatic Effects (Spectrum-only mode)
     chromatics: {
         enabled: true,
-        currentTheme: 'void',
+        darkMode: false,           // Toggle between dark and light background
         emissiveIntensity: 0.8,
         transitionSpeed: 0.15,
     },
 
-    // Color Theme Presets
-    themes: {
-        void: {
-            name: 'Void',
-            idleColor: 0x0a0a0a,
-            lowEnergyColor: 0x1a0a2e,    // Deep purple
-            highEnergyColor: 0x8b0000,   // Crimson
-            peakColor: 0x00ffff,         // Electric cyan
-            particleColor: 0x4a0080,
-            backgroundColor: 0xffffff,
-        },
-        gold: {
-            name: 'Liquid Gold',
-            idleColor: 0x1a1a0a,
-            lowEnergyColor: 0x8b6914,    // Bronze
-            highEnergyColor: 0xffd700,   // Gold
-            peakColor: 0xffffff,         // White hot
-            particleColor: 0xdaa520,
-            backgroundColor: 0xfaf8f0,
-        },
-        cyber: {
-            name: 'Cyberpunk',
-            idleColor: 0x0a0a1a,
-            lowEnergyColor: 0xff00ff,    // Magenta
-            highEnergyColor: 0x00ffff,   // Cyan
-            peakColor: 0xffff00,         // Yellow
-            particleColor: 0xff1493,
-            backgroundColor: 0x0a0a0f,
-        },
-        bio: {
-            name: 'Bioluminescence',
-            idleColor: 0x001a0a,
-            lowEnergyColor: 0x004d40,    // Dark teal
-            highEnergyColor: 0x00ff88,   // Bright green
-            peakColor: 0x00ffcc,         // Aqua
-            particleColor: 0x00aa55,
-            backgroundColor: 0x0a1a1a,
-        },
+    // Spectrum color settings (HSL cycling is the only mode)
+    spectrum: {
+        // Background colors
+        lightBackground: 0xffffff,
+        darkBackground: 0x0a0a0a,
+        // Particle colors
+        lightParticleColor: 0x333333,
+        darkParticleColor: 0xffffff,
+        // Idle color when no audio
+        idleColor: 0x1a1a1a,
     },
 
     // Premium Material
@@ -150,7 +122,7 @@ const CONFIG = {
     highQuality: true,
 
     // Waveform Overlay
-    waveformEnabled: false,
+    waveformEnabled: true,
 };
 
 // ============================================
@@ -309,7 +281,7 @@ function init() {
     }
 
     state.scene = new THREE.Scene();
-    state.scene.background = new THREE.Color(0xffffff);
+    // No scene background - use CSS body background instead for transparency
 
     state.camera = new THREE.PerspectiveCamera(
         50,
@@ -319,11 +291,12 @@ function init() {
     );
     state.camera.position.z = 6;
 
-    state.renderer = new THREE.WebGLRenderer({ antialias: true });
+    state.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     state.renderer.setSize(window.innerWidth, window.innerHeight);
     state.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     state.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     state.renderer.toneMappingExposure = 1.2;
+    state.renderer.domElement.classList.add('renderer-canvas');
     document.getElementById('app').insertBefore(
         state.renderer.domElement,
         document.getElementById('controls')
@@ -759,25 +732,30 @@ function updateJellyPhysics() {
 // ============================================
 // Chromatic Effects
 // ============================================
-function getTheme() {
-    return CONFIG.themes[CONFIG.chromatics.currentTheme] || CONFIG.themes.void;
-}
-
 function updateChromatics() {
     if (!CONFIG.chromatics.enabled || !state.symbiote) return;
 
-    const theme = getTheme();
     const energy = state.bass * 0.5 + state.mid * 0.3 + state.beat.intensity * 0.5;
 
-    // Determine target color based on energy level
-    if (energy < 0.2) {
-        state.targetColor.setHex(theme.idleColor);
-    } else if (energy < 0.5) {
-        state.targetColor.setHex(theme.lowEnergyColor);
-    } else if (energy < 0.8) {
-        state.targetColor.setHex(theme.highEnergyColor);
+    // Spectrum HSL cycling - maps frequency bands to hue ranges
+    // Bass: reds/oranges (0-60), Mid: greens/cyans (120-180), Treble: blues/magentas (240-300)
+    const bassHue = state.bass * 0.17;          // 0 to ~60/360
+    const midHue = 0.33 + state.mid * 0.17;     // 120 to ~180/360
+    const trebleHue = 0.67 + state.high * 0.17; // 240 to ~300/360
+
+    // Blend hues based on which frequency band is dominant
+    const totalEnergy = state.bass + state.mid + state.high + 0.001;
+    const blendedHue = (bassHue * state.bass + midHue * state.mid + trebleHue * state.high) / totalEnergy;
+
+    // Saturation and lightness based on overall energy
+    const saturation = 0.7 + energy * 0.3;
+    const lightness = 0.3 + energy * 0.4;
+
+    // Set target color (or idle if no audio)
+    if (energy < 0.05) {
+        state.targetColor.setHex(CONFIG.spectrum.idleColor);
     } else {
-        state.targetColor.setHex(theme.peakColor);
+        state.targetColor.setHSL(blendedHue, saturation, lightness);
     }
 
     // Smooth transition
@@ -794,27 +772,27 @@ function updateChromatics() {
     material.emissiveIntensity = emissiveIntensity;
 }
 
-function applyTheme(themeKey) {
-    if (!CONFIG.themes[themeKey]) return;
-
-    CONFIG.chromatics.currentTheme = themeKey;
-    const theme = CONFIG.themes[themeKey];
-
-    // Update background color
-    if (state.scene) {
-        state.scene.background.setHex(theme.backgroundColor);
+function toggleDarkMode(forceDark = null) {
+    if (forceDark !== null) {
+        CONFIG.chromatics.darkMode = forceDark;
+    } else {
+        CONFIG.chromatics.darkMode = !CONFIG.chromatics.darkMode;
     }
+
+    const isDark = CONFIG.chromatics.darkMode;
+
+    // Update body background (Three.js canvas is now transparent)
+    const bgColor = isDark ? '#0a0a0a' : '#ffffff';
+    document.body.style.backgroundColor = bgColor;
 
     // Update particle colors
     if (state.particles) {
-        state.particles.material.color.setHex(theme.particleColor);
+        state.particles.material.color.setHex(
+            isDark ? CONFIG.spectrum.darkParticleColor : CONFIG.spectrum.lightParticleColor
+        );
     }
 
-    // Reset current color to idle
-    state.currentColor.setHex(theme.idleColor);
-    state.targetColor.setHex(theme.idleColor);
-
-    showStatus(`Theme: ${theme.name}`);
+    showStatus(isDark ? 'Dark Mode' : 'Light Mode');
 }
 
 // ============================================
@@ -981,11 +959,11 @@ function setupSettingsControls() {
         });
     }
 
-    // Theme selector
-    const themeSelect = document.getElementById('themeSelect');
-    if (themeSelect) {
-        themeSelect.addEventListener('change', (e) => {
-            applyTheme(e.target.value);
+    // Dark Mode toggle
+    const darkModeToggle = document.getElementById('darkModeToggle');
+    if (darkModeToggle) {
+        darkModeToggle.addEventListener('change', (e) => {
+            toggleDarkMode(e.target.checked);
         });
     }
 
@@ -1021,7 +999,8 @@ function resetSettings() {
     CONFIG.physics.damping = 0.92;
     CONFIG.particles.enabled = true;
     CONFIG.chromatics.enabled = true;
-    CONFIG.waveformEnabled = false;
+    CONFIG.chromatics.darkMode = false;
+    CONFIG.waveformEnabled = true;
 
     // Update UI
     document.getElementById('sizeSlider').value = 0.9;
@@ -1032,15 +1011,17 @@ function resetSettings() {
     document.getElementById('dampingValue').textContent = '0.92';
     document.getElementById('particleToggle').checked = true;
     document.getElementById('chromaticToggle').checked = true;
-    document.getElementById('themeSelect').value = 'void';
+    if (document.getElementById('darkModeToggle')) {
+        document.getElementById('darkModeToggle').checked = false;
+    }
     if (document.getElementById('waveformToggle')) {
-        document.getElementById('waveformToggle').checked = false;
+        document.getElementById('waveformToggle').checked = true;
     }
 
     // Apply changes
     recreateSymbiote();
     if (state.particles) state.particles.visible = true;
-    applyTheme('void');
+    toggleDarkMode(false);
 
     showStatus('Settings reset to defaults');
 }
@@ -1139,28 +1120,26 @@ function handleKeyboard(e) {
 }
 
 function toggleUIVisibility(forceShow = null) {
-    const controls = document.getElementById('controls');
     const floatingBtn = document.getElementById('floatingShowBtn');
-
-    if (!controls) return;
+    const isHidden = document.body.classList.contains('ui-hidden');
 
     if (forceShow === true) {
         // Force show (from floating button or H key when hidden)
         menuManuallyHidden = false;
-        controls.classList.remove('hidden');
+        document.body.classList.remove('ui-hidden');
         if (floatingBtn) floatingBtn.classList.remove('visible');
         showStatus('UI Visible');
         resetUIHideTimer();
-    } else if (forceShow === false || !controls.classList.contains('hidden')) {
-        // Hide menu
+    } else if (forceShow === false || !isHidden) {
+        // Hide all UI
         menuManuallyHidden = true;
-        controls.classList.add('hidden');
+        document.body.classList.add('ui-hidden');
         if (floatingBtn) floatingBtn.classList.add('visible');
         if (uiHideTimeout) clearTimeout(uiHideTimeout);
     } else {
         // Toggle - currently hidden, so show
         menuManuallyHidden = false;
-        controls.classList.remove('hidden');
+        document.body.classList.remove('ui-hidden');
         if (floatingBtn) floatingBtn.classList.remove('visible');
         showStatus('UI Visible');
         resetUIHideTimer();
@@ -1524,6 +1503,7 @@ function drawWaveform() {
     const width = state.waveformCanvas.width;
     const height = state.waveformCanvas.height;
     const ctx = state.waveformCtx;
+    const centerY = height / 2;
 
     // Get time domain data
     const dataArray = new Uint8Array(state.analyser.fftSize);
@@ -1531,37 +1511,71 @@ function drawWaveform() {
 
     ctx.clearRect(0, 0, width, height);
 
-    ctx.lineWidth = 2;
-
     // Match waveform color to symbiote material color
-    let colorHex = 'ffffff';
+    let r = 255, g = 255, b = 255;
     if (state.symbiote && state.symbiote.material && state.symbiote.material.color) {
-        colorHex = state.symbiote.material.color.getHexString();
+        const color = state.symbiote.material.color;
+        r = Math.round(color.r * 255);
+        g = Math.round(color.g * 255);
+        b = Math.round(color.b * 255);
     }
 
-    ctx.strokeStyle = `#${colorHex}`;
-    ctx.shadowBlur = 10;
-    ctx.shadowColor = `#${colorHex}`;
+    const sliceWidth = width / state.analyser.fftSize;
 
-    ctx.beginPath();
+    // Multiple waveform layers with varying opacity and scale
+    const layers = [
+        { opacity: 0.1, scale: 1.0, lineWidth: 4 },
+        { opacity: 0.2, scale: 0.75, lineWidth: 3 },
+        { opacity: 0.4, scale: 0.5, lineWidth: 2 },
+        { opacity: 0.6, scale: 0.3, lineWidth: 1.5 },
+    ];
 
-    const sliceWidth = width * 1.0 / state.analyser.fftSize;
-    let x = 0;
+    layers.forEach(layer => {
+        ctx.lineWidth = layer.lineWidth;
+        ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${layer.opacity})`;
+        ctx.shadowBlur = 10 * layer.opacity;
+        ctx.shadowColor = `rgba(${r}, ${g}, ${b}, ${layer.opacity * 0.5})`;
 
-    for (let i = 0; i < state.analyser.fftSize; i++) {
-        const v = dataArray[i] / 128.0; // 0..2
-        const y = (v * height) / 2; // scale to canvas height
+        // Draw upper waveform
+        ctx.beginPath();
+        for (let i = 0; i < state.analyser.fftSize; i++) {
+            const v = (dataArray[i] - 128) / 128.0;
+            const amplitude = Math.abs(v) * (height / 2) * layer.scale;
+            const x = i * sliceWidth;
+            const y = centerY - amplitude;
 
-        if (i === 0) {
-            ctx.moveTo(x, y);
-        } else {
-            ctx.lineTo(x, y);
+            if (i === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
         }
+        ctx.stroke();
 
-        x += sliceWidth;
-    }
+        // Draw mirrored lower waveform
+        ctx.beginPath();
+        for (let i = 0; i < state.analyser.fftSize; i++) {
+            const v = (dataArray[i] - 128) / 128.0;
+            const amplitude = Math.abs(v) * (height / 2) * layer.scale;
+            const x = i * sliceWidth;
+            const y = centerY + amplitude;
 
-    ctx.lineTo(width, height / 2);
+            if (i === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        }
+        ctx.stroke();
+    });
+
+    // Subtle center line
+    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.1)`;
+    ctx.lineWidth = 1;
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.moveTo(0, centerY);
+    ctx.lineTo(width, centerY);
     ctx.stroke();
 }
 

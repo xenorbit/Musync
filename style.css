@@ -65,6 +65,7 @@ body {
     margin-bottom: 8px;
     background: linear-gradient(135deg, #000, #333);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 
@@ -109,21 +110,27 @@ body {
     position: relative;
 }
 
-#visualizer {
+/* Main Three.js canvas - in front of waveform */
+.renderer-canvas {
     width: 100%;
     height: 100%;
     display: block;
     cursor: crosshair;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 2;
 }
 
+/* Waveform canvas - behind the blob, at bottom */
 #waveformCanvas {
-    position: fixed;
+    position: absolute;
     bottom: 0;
     left: 0;
     width: 100%;
     height: 150px;
     pointer-events: none;
-    z-index: 10;
+    z-index: 1;
 }
 
 /* Controls Panel */
@@ -213,7 +220,7 @@ body {
     top: 50%;
     right: 24px;
     transform: translateY(-50%) translateX(120%);
-    width: 280px;
+    width: 320px;
     background: var(--bg-glass);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
@@ -463,6 +470,22 @@ body {
 
 .floating-show-btn svg {
     color: var(--text-primary);
+}
+
+/* Global UI Hide Mode */
+body.ui-hidden #controls,
+body.ui-hidden #settingsPanel,
+body.ui-hidden #keyboardHints,
+body.ui-hidden #status {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transition: opacity 0.4s ease;
+}
+
+body.ui-hidden .floating-show-btn {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: auto;
 }
 
 /* Fullscreen mode adjustments */
